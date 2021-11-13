@@ -17,7 +17,11 @@ int main()
 {
     std::cout << "Hello World!\n";
     CSVRead data;
-    readcvsfile(filename, data);
+    int i;
+    std::cin >> i;
+    std::cout << std::cin.good() << ' ';
+    std::cout << i << std::endl;
+    // readcvsfile(filename, data);
 }
 bool eolfunction(char ch)
 {

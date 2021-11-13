@@ -44,11 +44,12 @@ vectors to be of the correct size.
 
 Each field is parsed as follows:
 
-1. trim removes matching characters in the beginning.
+1. trim removes matching characters in the beginning as long as no stopFunc
+   match.
 2. the read is done and the read terminates with a stopFunc or term match.
 3. trim removes characters in the end.
 
-A defalut is passed.
+A default is passed.
 Some use case this was designed for:
 							  termFunc stopFunc trim       output
  123 ' ' ' ',' '132 ' ''\n'   ' '||,    \n      ' '||,     123, 132;  term is comma or space

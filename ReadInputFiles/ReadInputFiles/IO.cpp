@@ -1,9 +1,11 @@
 //read elements in vector until the term found
 #include <stdexcept>
 #include <iomanip>
+
 bool readOver(std::istream& ist, IO::charIn termFunc, IO::charIn stopFunc, IO::charIn ignore);
 // 
-bool trimStream(std::istream& ist, IO::charIn trim);
+//bool trimStream(std::istream& ist, IO::charIn trim);
+
 
 bool IO::falseFunction(char ch) {
 	return false;
@@ -14,7 +16,7 @@ bool IO::falseFunction(char ch) {
 // continues until termfunc is found and fails if not found. vector<T> grows for each successful read;
 // str good:   stop term found
 // str bad:    eof, bad char read, or read failed--latter two cases char returned to stream
-template<class T> istream& IO::fill_vector(istream& ist, vector<T>& v, charIn termfunc, charIn ignore)
+template<class T> std::istream& IO::fill_vector(istream& ist, vector<T>& v, charIn termfunc, charIn ignore)
 // read integers from ist into v until we reach eof() or terminator
 {
 
@@ -442,6 +444,21 @@ void IO::read_past_token(istream& instr, charIn termfunc, bool eatToken) // if w
 		std::runtime_error("bad stream...");
 	     // bad
 }
+// TrimStream will remove trimfunction chars as long as stopFunction not triggered.
+//  This function makes sure no trim values are starting the stream and removes them. Stop
+// is put back on the stream.
+istream& TrimStream(istream& ist, const IO::charIn trim, const IO::charIn stopFunc)
+{
+	char ch;
+	while (ist.get(ch) && trim(ch) && !stopFunc(ch));
+	//either stream failed or nonspace found
+	if (ist) //nonspace found
+	{
+		ist.unget();
+		
+	}
+	return ist;
+}
 
 bool IO::isPeriod(char ch) {
 	return ch == '.';
@@ -483,24 +500,7 @@ istream& clearonlyspace(istream& ist)
 	}
 	return ist;
 }
-//clearSpacesWhileCheckingStop will remove spaces from stream failing stream if stopfunc
-// true (in that case puts char back.) and leaving stream ready to read data with stream
-// good if a nonstopFunc found
-istream& clearSpacesWhileCheckingStop(istream& ist, IO::charIn Ignore, IO::charIn stopFunc)
-{
-	char ch;
-	while (ist.get(ch) && Ignore(ch));
-	//either stream failed or nonspace found
-	if (ist) //nonspace found
-	{
-		ist.unget();
-		if (stopFunc(ch))
-		{
-			ist.clear(ios_base::failbit);
-		}
-	}
-	return ist;
-}
+/
 //endofStreamLogic returns T/F to know whether read is over.  It checks these 
 
 failed    termfunc		stopFunc	space	done?	strstate	putback
