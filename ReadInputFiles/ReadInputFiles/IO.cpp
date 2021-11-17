@@ -1,7 +1,9 @@
 //read elements in vector until the term found
 #include <stdexcept>
 #include <iomanip>
-
+#include <sstream>
+#include <assert>
+// #define NDEBUG
 bool readOver(std::istream& ist, IO::charIn termFunc, IO::charIn stopFunc, IO::charIn ignore);
 // 
 //bool trimStream(std::istream& ist, IO::charIn trim);
@@ -258,10 +260,29 @@ template<class T> istream& IO::read(istream& ist, T& tval, bool& readsuccess,
 	// if stream fails stream keeps failing bit on stream anyway so no need to code that.
 	if ( !readOver(ist, termfunc, stopFunc, ignore) ) // data found on stream
 	{
-		ist.clear(std::ios_base::failbit);
+		ist.clear(std::ios_base::failbit)
 		// non terminator or data found (and returned to stream ) fail stream.
 	}
 	return ist;
+}
+template<class T> istream& IO::read(istream& ist, T& tval, bool& readsuccess, charIn termfunc,
+	charIn stopFunc, charIn trim, const T& default)
+{
+	readsuccess = false;
+	TrimStream(ist, trim, stopFunc); // remove trim characters
+	ist >> tval;
+	bool findTerm(char ch)
+	{
+		return termfunc(ch) || stopFunc(ch);
+	}
+	if (ist)
+		readsuccess = true;
+	    
+	else
+		tval = dafault;
+
+	TrimStream(ist, trim, stopFunc);
+
 }
 
 //ReadT will read tval assuming before and after are spaces, ' '.  fails stream if stopFuncFound
@@ -371,8 +392,84 @@ bool readOver(istream& ist, IO::charIn termFunc, IO::charIn stopFunc, IO::charIn
 	}
 	return readDone;  //unexpected char could be data
 }
+//Constructor  Initialize variables 
+IO::readStream::readStream(istream& str, T& d, charIn termF, charIn stopF, charIn
+			TrimF, onError errorType = onError::Print):instr{str}, value{d},
+			Func{termF, stopF, TrimF}, state{false, false},
+			count{0, 0}, type{errorType} 
+{
+	instr.exceptions(instr.exceptions()|ios_base::badbit); 
+	// This throws exception if instr is bad 
+	// If that fails the program can't recover so we might as well throw  an
+	// exception.
+} 
+// Report an error along with line and read number
+void IO::readStream::error(const string& msg)
+{
+   std::ostringstream oss{msg, ios::ate}; // position to end of stream
+   oss << "; Line " << count.lines <<"; readCount " <<count.reads;
+   switch(type){
+   case  onError::Throw:
+         std::runtime_error(oss.str());
+	 break;
+   case  onError::Print:
+   	 std::cerr << oss.str()<< std::endl;
+	 break
+   default:
+         break;
+   }
+   return;
+}
+
+// removeUntil will remove  chars as long as stopFunction not triggered.
+//  This function makes sure no trim values are starting the stream and removes them. Stop
+// is put back on the stream.
+istream& IO::readStream::removeUntil(const IO::charIn trim, const IO::charIn stopFunc)
+{
+	char ch;
+	while (instr.get(ch) && trim(ch) && !stopFunc(ch));
+	//either stream failed or nonspace found
+	if (instr) //stopFunction must be true or trim false
+	{
+		instr.unget();
+		
+	}
+	return instr;
+}
 
 
+// read a type T from the stream and report on stream state. It updates
+// state.formatError if unexpected chars found. If the stop or term char is found but
+// no data that is considered missing data and the default is used, not a format
+// error.
+istream& IO::readStream::read(T& tval)
+{
+   // if at End of File stream will be failed so read won't work.
+   // Hear EOF is treated as a term character as it should be at the end of reading a
+   // line of code
+   instr >> T;
+   // value is bad but is this a format error or a missing data element?
+   ++state.reads;
+   if (instr.fail())
+   {
+      T = value; 
+      if (!instr.eof()) // characters left
+      {
+           instr.clear();
+	   auto stopread = [Func.stop, Func.trim](char i) {return  Func.stop(i) ||
+	   Func.trim(i); };
+	   // there was a format error on read
+	   instr >> ch;
+	   std::assertm(instr, "Chars Missing");
+	   if ( state.formatError =!stopread(ch))
+	   {
+           	error("Format Error on read"); //data entry missing;  char is 
+	   }
+	   instr.unget();
+      }
+    }
+    return instr;
+}
 
 /*    istream& IO::check_failed_stream(istream& ist, Op termfunc, const string& message)
 is meant to test a stream after it has failed.  It isn't meant for good streams!. For example
@@ -443,21 +540,6 @@ void IO::read_past_token(istream& instr, charIn termfunc, bool eatToken) // if w
 	if (instr.bad()) 
 		std::runtime_error("bad stream...");
 	     // bad
-}
-// TrimStream will remove trimfunction chars as long as stopFunction not triggered.
-//  This function makes sure no trim values are starting the stream and removes them. Stop
-// is put back on the stream.
-istream& TrimStream(istream& ist, const IO::charIn trim, const IO::charIn stopFunc)
-{
-	char ch;
-	while (ist.get(ch) && trim(ch) && !stopFunc(ch));
-	//either stream failed or nonspace found
-	if (ist) //nonspace found
-	{
-		ist.unget();
-		
-	}
-	return ist;
 }
 
 bool IO::isPeriod(char ch) {
@@ -590,32 +672,6 @@ ostream&  IO::printdouble(ostream& outstr, const double val, int precis)
 }
 
 
-/*readOver clears  known chars from stream so that read can work.  It returns readDone;
-Functions:
-
-termFunc  indicates read of this value over but more values can be read; stream good
-stopFunc  indicates read over, but the end of the array is reached stream failed
-ignore    chars like space not chars of data nor terminators. These chars removed from stream, but read not over.
-the checks are ordered failedstream, termfunc, stopfunc, ignore; so that ignore is only tested for nonmatching chars.
-
-failed    termfunc		stopFunc	Ignore	ReadOver?	strstate	putback
-T			X			x			x		true	failed		no
-F			T			x			x		true	good		no      normal case
-F			F			T			x		true	failed		yes
-F			F			F			T		---  	good        no     continue reading until not ignore
-F           F           F           F       false    good        yes     data char found.  End looking for chars and
-																		terminate
-
-this means that when it returns
-
-ReadOver      strstate    meaning
-T               Good       term found
-T               bad        eof found or endofArray found
-F               good       non control char found
-
-
-
-*/
 /*
 bool readOver(istream& ist, IO::charIn termFunc, IO::charIn stopFunc, IO::charIn ignore)
 {
@@ -638,5 +694,4 @@ bool readOver(istream& ist, IO::charIn termFunc, IO::charIn stopFunc, IO::charIn
 		}
 	}
 	return readDone;  //unexpected char could be data
-}
-*/
+}*/

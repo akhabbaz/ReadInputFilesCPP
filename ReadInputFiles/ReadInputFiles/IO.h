@@ -1,4 +1,4 @@
-# pragma once
+e pragma once
 #include <vector>
 #include <iostream>
 #include <string>
@@ -78,11 +78,55 @@ namespace IO{
 		charIn trim;     // character to trim
 		TestChar(charIn sep, charIn st, charIn tr) :term(sep), stop(st), trim(tr) {}
 	};
-	struct readSuccess {
-		bool datafound;
-		bool termfound;
-		bool stopfound;
+	// streamState reports all information back to vector Read so that it can
+	// decide what to do.
+	struct streamState {
+		bool LineEnd;      // after this read vector should terminate
+		bool formatError; // UnexpectedRead
 	};
+	// counts the number of reads in the line and the number of vectors read for
+	// error reporting.
+	struct  readCount{
+	       int   reads;
+	       int   lines;
+	};
+	// We expect the T classes to be separated by a terminator. If no T is found
+	// at all, then that is not considered an error--the default is used. The
+	// data file may be that way as a CSV file is. If
+	// characters are found that are not lineEnds or terminators or ignores or
+	// characters that define T, then an error is found. 
+	enum class onError { Throw, Print, Ignore}; // behavior when an unexpected action happens
+	
+	//helper functions to read a stream, remove chars from a stream.
+	template <typename T> class readStream{
+	public:
+		readStream(istream& str, T& d, charIn termF, charIn stopF, charIn
+			TrimF, onError errType = onError::Print); // set up read
+		void error(const string& message);  // report the error
+		// removes characters from stream matching ignoreFunc and stopping
+		// with stopFunc; if stop found it is returned to stream
+                istream& removeUntil( charIn ignoreFunc, charIn stopFunc);
+		istream& read(T& tval);// read a type T using operator>>() 
+	        istream& readString(string& str); //read a string value one character
+				// at a time
+		string&  trimStringEnd(string& str) // removes matching chars from
+		 			// end of string.
+		void     readTerminator(); // a single char read looking for record
+					// terminator, end of line, or end of file
+		SState   reportState(); // tells whether data is good or stream is
+		                        // good
+
+		// the actual stream
+	        istream& instr;  // the stream
+
+	private:
+	   T&    value  ;  // default when value not found
+	   TestChar Func;  // the character testing functions
+           streamState state; // state after the last read
+	   readCount   count; // count of reads and vectors
+	   onError     type;  // type of error
+	};
+
 
 	//fills a vector of T, where T types are separated by the required term, stopFunc char ends the filling, and Ignore chars are removed
 	// ignore character is the case when you have multiple separators in a row like many spaces and you don't want
