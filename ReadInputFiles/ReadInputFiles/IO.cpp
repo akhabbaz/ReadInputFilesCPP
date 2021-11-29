@@ -2,8 +2,311 @@
 #include <stdexcept>
 #include <iomanip>
 #include <sstream>
-#include <assert>
+#include <cassert>
+#include <algorithm>
 // #define NDEBUG
+
+bool IO::isPeriod(char ch) {
+	return ch == '.';
+}
+bool IO::isspace(char ch) {
+	return ::isspace(ch) != 0;
+}
+bool IO::isComma(char ch) {
+	return ch == ',';
+}
+bool IO::isSemiColon(char ch){
+	return ch == ';';
+}
+//Constructor  Initialize variables 
+template<typename T> IO::readStream<T>::readStream(istream& str, T& d, IO::charIn termF, IO::charIn stopF, IO::charIn
+	TrimF, onError errorType) :instr{ str }, value{ d },
+	Func{ termF, stopF, TrimF }, state{ false, false },
+	count{ 0, 0 }, type{ errorType }
+{
+	instr.exceptions(instr.exceptions() | std::ios_base::badbit);
+	// This throws exception if instr is bad 
+	// If that fails the program can't recover so we might as well throw  an
+	// exception. Best explained p 763 Jossutis. Stream State Exceptions
+	// 15.4.4
+}
+IO::readStream<string>::readStream(istream& str, string& d, IO::charIn termF, IO::charIn stopF, IO::charIn
+	TrimF, onError errorType) :instr{ str }, value{ d },
+	Func{ termF, stopF, TrimF }, state{ false, false },
+	count{ 0, 0 }, type{ errorType }
+{
+	instr.exceptions(instr.exceptions() | std::ios_base::badbit);
+	// This throws exception if instr is bad 
+	// If that fails the program can't recover so we might as well throw  an
+	// exception. Best explained p 763 Jossutis. Stream State Exceptions
+	// 15.4.4
+}
+// Report an error along with line and read number
+template<typename T> void IO::readStream<T>::error(const string& msg)
+{
+   std::ostringstream oss{msg, std::ios_base::ate}; // position to end of stream
+   oss << "; Line " << count.lines <<"; readCount " <<count.reads;
+   switch(type){
+   case  onError::Throw:
+         std::runtime_error(oss.str());
+	 break;
+   case  onError::Print:
+   	 std::cerr << oss.str()<< std::endl;
+	 break;
+   default:
+         break;
+   }
+   return;
+}
+
+template<typename T> IO::streamState  IO::readStream<T>::reportState()
+{
+	return state;
+} // tells whether data is good or stream is
+// remove will remove  chars as long as trim is true.
+//  This function makes sure no trim values are starting the stream and removes
+//  them. First nonmatching character put back.
+template<typename T> istream& IO::readStream<T>::remove(const IO::charIn trim)
+{
+	char ch;
+	while (instr.get(ch) && trim(ch)){}
+	//either stream failed or nonspace found
+	if (instr) //stopFunction must be true or trim false
+	{
+		instr.unget();
+		
+	}
+	return instr;
+}
+// remove all but the last occurance of a matching character. The character on
+// the stream will be  the match if found, but if not found,  the stream remains
+// as it was.
+template<typename T> istream& IO::readStream<T>::remove_keepLast(const
+IO::charIn tr)
+{
+	int peekVal;
+        bool match=false;
+        // enter if not eof
+		while ((peekVal = instr.peek()) != std::char_traits<char>::eof())
+		{
+			char ch{ static_cast<char>(peekVal) };
+			char  test;
+			// match found
+			if (tr(ch)) {
+				match = true;
+				instr >> test; // read char
+				assert(test == ch); // should be the same
+			}
+			else {
+				if (match) { instr.unget(); }
+				break;
+			}
+		}
+        return instr;
+}
+
+// readSimple a type T from the stream and report on stream state. It updates
+// state.formatError if unexpected chars found. If the stop or term char is found but
+// no data that is considered missing data and the default is used, not a format
+// error.
+template<typename T> istream& IO::readStream<T>::readSimple(T& tval)
+{
+   // if at End of File stream will be failed so read won't work.
+   // Hear EOF is treated as a term character as it should be at the end of reading a
+   // line of code
+   instr >> T;
+   // value is bad but is this a format error or a missing data element?
+   ++state.reads;
+   if (instr.fail())
+   {
+      T = value; 
+      if (!instr.eof()) // characters left
+      {
+           instr.clear();
+	       charIn stopread = [Func](char i) -> bool {return  Func.stop(i) ||
+				   Func.trim(i) || Func.term(i); };
+	   // there was a format error on read
+           char ch{ static_cast<char>(instr.peek())};
+	       assert(instr);// should be able to get chars
+	       if ( state.formatError =!stopread(ch)){
+           	error("Format Error on read"); //data entry missing;  char is 
+	       }
+      }
+    }
+    return instr;
+}
+
+//Reads the string assuming trim cleared in the beginning 
+istream& IO::readStream<string>::readA(string& str) //read a string value one character at a time
+{
+
+	charIn stopread = [this](char i) -> bool{return  Func.stop(i) ||
+		Func.term(i); };
+	accumulate(str, stopread);
+	trimStringEnd(str, Func.trim);
+	return instr;
+}
+
+void IO::streamState::reset() {
+	lineEnd = false;
+	formatError = false;
+}  // sets stream to false.
+template<typename T> istream& IO::readStream<T>::read(T& tval)// read a type T using operator>>()
+{
+        //clear past read state:
+        state.reset(); 	
+	// if trim is different from the terminator or eol, then this removes
+        // trim characters. If there are characters both trim and terminator,
+        // then those repeats get removed.  
+	remove( Func.trim); // non trim char left on stream  should be T if eof fail.
+	readSimple(tval);  // 
+	charIn stopread = [Func](char i) -> bool {return  Func.stop(i) ||
+	   		Func.term(i); };
+	if (state.formatError) { // there is a non term on stream.
+	   remove( stopread); // clear stream till term found
+        }
+	//remove trim chars before terminator.  If trim does not includ
+        charIn trimNotTerm = [Func](char ch) -> bool {return
+		Func.trim(ch) && !(Func.stop(ch) || Func.term(ch)); };
+        // all trim chars removed as long as they are not terminators
+        remove(trimNotTerm);
+        charIn trimAndTerm =[Func](char i) -> bool {return
+		Func.trim(i) && (Func.stop(i) || Func.term(i)); };
+  	// if trim overlaps with term all but the last is removed.
+        remove_keepLast(trimAndTerm);
+        // all trims have been removed char on stream should be terminator.
+        readTerminator();
+	return instr;
+}
+       
+   
+// accumulate will store characters in a string as long as stopFunction not triggered.
+//  The stop function puts the character back into the stream.
+ istream& IO::readStream<string>::accumulate( string& str, const IO::charIn stopFunc)
+{
+	char ch;
+	std::ostringstream oss;
+	while (instr.get(ch) &&  !stopFunc(ch))
+	{
+		oss << ch;
+	}
+	//stream is good so stopFunc  must be true
+	if (instr) 
+	{
+		instr.unget();
+
+	}
+	str = oss.str();
+	return instr;
+}
+// removes characters at the end of the string.
+ void IO::readStream<string>::trimStringEnd(string& instring, const IO::charIn
+		trimFunc)
+{
+	// reverse iterator to find the last charactermatching
+	// will return iterator to first not Trim function or last good
+	// character.
+	// because reverse iterator's value is one behind, the first !trimFunc
+	// has a value of the nontrim character but points one ahead.
+	string::const_reverse_iterator  lastGood=
+		std::find_if_not(instring.crbegin(), instring.crend(), trimFunc);
+	// turn it into a forward iterator for purposes of erase. THis now
+	// points to the first trimcharacter that is consecutive from the end.
+	string::const_iterator forwardit {lastGood.base()};
+	// do the erasing.
+	instring.erase(forwardit);
+}
+// a single char read looking for a record terminator, end of line or end of
+// file
+template<typename T> void     IO::readStream<T>::readTerminator()
+{
+      auto stopread = [Func](char i) -> bool {return  Func.stop(i) ||
+	   Func.term(i); };
+      char ch;
+      if ( instr >> ch && state.formatError =!stopread(ch))
+      {
+           	error("Terminator not found"); //data entry missing;  char is
+                remove(stopread); // remove characters from the stream. 
+      }
+      if (Func.stop(ch)) {
+	   state.lineEnd = true;
+      }
+      return;
+}
+	  	
+ 	
+/*    istream& IO::check_failed_stream(istream& ist, Op termfunc, const string& message)
+is meant to test a stream after it has failed.  It isn't meant for good streams!. For example
+if the read succeeded even if stream is now EOF or bad, the stream will say success.  It throws an exception
+if the stream is bad.  Below pertains to failed streams that are not bad.  
+
+   preconditions:  stream has failed.
+   1.  If it returns true it means terminator was found, and if it returns false it means terminator
+       wasn't found
+
+*/
+istream& IO::check_failed_stream(istream& ist, charIn termfunc, const string& message)
+{
+	if (ist.fail()) 
+	{ // use term as terminator and/or separator
+		ist.clear();
+		check_good_stream(ist, termfunc, message);
+	}
+	return ist;
+}
+// checks a good stream for a terminator charactor termfunc(ch) true and sets stream to fail otherwise
+// this will check the next char in the stream (may be a white space)
+istream& IO::check_good_stream(istream& ist, charIn termfunc, const string& message)
+{
+	char ch;  // this has to work if the stream isn't over
+	ist.get(ch);
+	if (ist  && !termfunc(ch)){ //read successful but not terminator
+		ist.unget();
+		ist.clear(std::ios_base::failbit);
+	}
+	if (ist.bad()) 
+		std::runtime_error{ message };
+	return ist;
+}
+
+template< class T> ostream&  IO :: print_vector(ostream& ostr, const  T& invec, const int modulo)
+{
+	if (modulo < 1) 
+		std::runtime_error("Modulo too small");
+	for (vector<int>::size_type i = 0; i < unsigned(invec.size()); i++)
+	{
+		ostr << invec[i];
+		ostr << (((i + 1) % modulo) ? '\t' : '\n');
+	}
+	ostr << '\n';
+	return ostr;
+}
+
+
+//will read the input until either the token is found or eof().
+// optionally can return the token to the stream;
+void IO::read_past_token(istream& instr, charIn termfunc, bool eatToken) // if we don't find terminator let stream stay failed
+{
+	if (instr.fail()) {
+		instr.clear();
+		char ch;
+		while (instr.get(ch)){       // throw away till )
+			if (termfunc(ch))
+			{
+				if (!eatToken) instr.unget();
+				instr.clear();
+				return;
+			}
+		}
+	}
+	 //if fail to read ) then we have to be eof; otherwise 
+	// exception
+	if (instr.bad()) 
+		std::runtime_error("bad stream...");
+	     // bad
+}
+
+
 bool readOver(std::istream& ist, IO::charIn termFunc, IO::charIn stopFunc, IO::charIn ignore);
 // 
 //bool trimStream(std::istream& ist, IO::charIn trim);
@@ -260,31 +563,31 @@ template<class T> istream& IO::read(istream& ist, T& tval, bool& readsuccess,
 	// if stream fails stream keeps failing bit on stream anyway so no need to code that.
 	if ( !readOver(ist, termfunc, stopFunc, ignore) ) // data found on stream
 	{
-		ist.clear(std::ios_base::failbit)
+		ist.clear(std::ios_base::failbit);
 		// non terminator or data found (and returned to stream ) fail stream.
 	}
 	return ist;
 }
-template<class T> istream& IO::read(istream& ist, T& tval, bool& readsuccess, charIn termfunc,
-	charIn stopFunc, charIn trim, const T& default)
+/*
+template<typename T > istream& IO::read(istream& ist, T& tval, bool& readsuccess, charIn termfunc,
+	charIn stopFunc, charIn trim, const T& d)
 {
 	readsuccess = false;
-	TrimStream(ist, trim, stopFunc); // remove trim characters
+	//TrimStream(ist, trim, stopFunc); // remove trim characters
 	ist >> tval;
-	bool findTerm(char ch)
+	charIn findTerm = [termfunc, stopFunc] (char ch) ->bool
 	{
 		return termfunc(ch) || stopFunc(ch);
-	}
+	};
 	if (ist)
 		readsuccess = true;
 	    
 	else
-		tval = dafault;
+		tval = d;
 
-	TrimStream(ist, trim, stopFunc);
-
+	//TrimStream(ist, trim, stopFunc);
 }
-
+*/
 //ReadT will read tval assuming before and after are spaces, ' '.  fails stream if stopFuncFound
 // if str is good read success
 /*
@@ -391,168 +694,6 @@ bool readOver(istream& ist, IO::charIn termFunc, IO::charIn stopFunc, IO::charIn
 		}
 	}
 	return readDone;  //unexpected char could be data
-}
-//Constructor  Initialize variables 
-IO::readStream::readStream(istream& str, T& d, charIn termF, charIn stopF, charIn
-			TrimF, onError errorType = onError::Print):instr{str}, value{d},
-			Func{termF, stopF, TrimF}, state{false, false},
-			count{0, 0}, type{errorType} 
-{
-	instr.exceptions(instr.exceptions()|ios_base::badbit); 
-	// This throws exception if instr is bad 
-	// If that fails the program can't recover so we might as well throw  an
-	// exception.
-} 
-// Report an error along with line and read number
-void IO::readStream::error(const string& msg)
-{
-   std::ostringstream oss{msg, ios::ate}; // position to end of stream
-   oss << "; Line " << count.lines <<"; readCount " <<count.reads;
-   switch(type){
-   case  onError::Throw:
-         std::runtime_error(oss.str());
-	 break;
-   case  onError::Print:
-   	 std::cerr << oss.str()<< std::endl;
-	 break
-   default:
-         break;
-   }
-   return;
-}
-
-// removeUntil will remove  chars as long as stopFunction not triggered.
-//  This function makes sure no trim values are starting the stream and removes them. Stop
-// is put back on the stream.
-istream& IO::readStream::removeUntil(const IO::charIn trim, const IO::charIn stopFunc)
-{
-	char ch;
-	while (instr.get(ch) && trim(ch) && !stopFunc(ch));
-	//either stream failed or nonspace found
-	if (instr) //stopFunction must be true or trim false
-	{
-		instr.unget();
-		
-	}
-	return instr;
-}
-
-
-// read a type T from the stream and report on stream state. It updates
-// state.formatError if unexpected chars found. If the stop or term char is found but
-// no data that is considered missing data and the default is used, not a format
-// error.
-istream& IO::readStream::read(T& tval)
-{
-   // if at End of File stream will be failed so read won't work.
-   // Hear EOF is treated as a term character as it should be at the end of reading a
-   // line of code
-   instr >> T;
-   // value is bad but is this a format error or a missing data element?
-   ++state.reads;
-   if (instr.fail())
-   {
-      T = value; 
-      if (!instr.eof()) // characters left
-      {
-           instr.clear();
-	   auto stopread = [Func.stop, Func.trim](char i) {return  Func.stop(i) ||
-	   Func.trim(i); };
-	   // there was a format error on read
-	   instr >> ch;
-	   std::assertm(instr, "Chars Missing");
-	   if ( state.formatError =!stopread(ch))
-	   {
-           	error("Format Error on read"); //data entry missing;  char is 
-	   }
-	   instr.unget();
-      }
-    }
-    return instr;
-}
-
-/*    istream& IO::check_failed_stream(istream& ist, Op termfunc, const string& message)
-is meant to test a stream after it has failed.  It isn't meant for good streams!. For example
-if the read succeeded even if stream is now EOF or bad, the stream will say success.  It throws an exception
-if the stream is bad.  Below pertains to failed streams that are not bad.  
-
-   preconditions:  stream has failed.
-   1.  If it returns true it means terminator was found, and if it returns false it means terminator
-       wasn't found
-
-*/
-istream& IO::check_failed_stream(istream& ist, charIn termfunc, const string& message)
-{
-	if (ist.fail()) 
-	{ // use term as terminator and/or separator
-		ist.clear();
-		check_good_stream(ist, termfunc, message);
-	}
-	return ist;
-}
-// checks a good stream for a terminator charactor termfunc(ch) true and sets stream to fail otherwise
-// this will check the next char in the stream (may be a white space)
-istream& IO::check_good_stream(istream& ist, charIn termfunc, const string& message)
-{
-	char ch;  // this has to work if the stream isn't over
-	ist.get(ch);
-	if (ist  && !termfunc(ch)){ //read successful but not terminator
-		ist.unget();
-		ist.clear(std::ios_base::failbit);
-	}
-	if (ist.bad()) 
-		std::runtime_error{ message };
-	return ist;
-}
-
-template< class T> ostream&  IO :: print_vector(ostream& ostr, const  T& invec, const int modulo)
-{
-	if (modulo < 1) 
-		std::runtime_error("Modulo too small");
-	for (vector<int>::size_type i = 0; i < unsigned(invec.size()); i++)
-	{
-		ostr << invec[i];
-		ostr << (((i + 1) % modulo) ? '\t' : '\n');
-	}
-	ostr << '\n';
-	return ostr;
-}
-
-
-//will read the input until either the token is found or eof().
-// optionally can return the token to the stream;
-void IO::read_past_token(istream& instr, charIn termfunc, bool eatToken) // if we don't find terminator let stream stay failed
-{
-	if (instr.fail()) {
-		instr.clear();
-		char ch;
-		while (instr.get(ch)){       // throw away till )
-			if (termfunc(ch))
-			{
-				if (!eatToken) instr.unget();
-				instr.clear();
-				return;
-			}
-		}
-	}
-	 //if fail to read ) then we have to be eof; otherwise 
-	// exception
-	if (instr.bad()) 
-		std::runtime_error("bad stream...");
-	     // bad
-}
-
-bool IO::isPeriod(char ch) {
-	return ch == '.';
-}
-bool IO::isspace(char ch) {
-	return ::isspace(ch) != 0;
-}
-bool IO::isComma(char ch) {
-	return ch == ',';
-}
-bool IO::isSemiColon(char ch){
-	return ch == ';';
 }
 /*
 

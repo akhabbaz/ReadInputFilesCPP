@@ -1,7 +1,8 @@
-e pragma once
+# pragma once
 #include <vector>
 #include <iostream>
 #include <string>
+#include <limits>
 
 using std::istream;
 using std::ostream;
@@ -13,11 +14,12 @@ This program is meant to read a large subset of them, including CSV files.
 
 The purpose of this file is to read data text files of various forms that consist of
 a columnar arrangement of data. One line has data fields that may be empty separated by a 
-terminator function term. The data can be strings or numeric types, but all the same type.
+terminator function term.  It also can be used to read a series of any record
+type.  The data can be strings or numeric types, but all the same type.
 The program has a read function which reads one field and a vector function which reads a series
 fields.
 
-Some features that make this general: Matching is done with functions not characters so logic 
+Some features that make this general. Logic 
 or several different characters can make a match. Standard functions like isspace can be used. Next,
 the type of read is a template, so anything can be read, any type of variable. The read will be defined
 by the >> operator. Lastly care is taken to read single characters at a time so that if the read fails
@@ -81,8 +83,9 @@ namespace IO{
 	// streamState reports all information back to vector Read so that it can
 	// decide what to do.
 	struct streamState {
-		bool LineEnd;      // after this read vector should terminate
+		bool lineEnd;      // after this read vector should terminate
 		bool formatError; // UnexpectedRead
+        void   reset();  // sets stream to false.
 	};
 	// counts the number of reads in the line and the number of vectors read for
 	// error reporting.
@@ -101,20 +104,12 @@ namespace IO{
 	template <typename T> class readStream{
 	public:
 		readStream(istream& str, T& d, charIn termF, charIn stopF, charIn
-			TrimF, onError errType = onError::Print); // set up read
-		void error(const string& message);  // report the error
-		// removes characters from stream matching ignoreFunc and stopping
-		// with stopFunc; if stop found it is returned to stream
-                istream& removeUntil( charIn ignoreFunc, charIn stopFunc);
+			TrimF,   onError errType = onError::Print); // set up read
 		istream& read(T& tval);// read a type T using operator>>() 
-	        istream& readString(string& str); //read a string value one character
-				// at a time
-		string&  trimStringEnd(string& str) // removes matching chars from
-		 			// end of string.
-		void     readTerminator(); // a single char read looking for record
-					// terminator, end of line, or end of file
-		SState   reportState(); // tells whether data is good or stream is
+		streamState  reportState(); // tells whether data is good or stream is
 		                        // good
+                istream&  read(vector<T> &, int iter =
+					std::numeric_limits<int>::max());
 
 		// the actual stream
 	        istream& instr;  // the stream
@@ -125,8 +120,74 @@ namespace IO{
            streamState state; // state after the last read
 	   readCount   count; // count of reads and vectors
 	   onError     type;  // type of error
+           // accumulate characters in the stream
+	   void error(const string& message);  // report the error
+		// removes characters from stream matching ignoreFunc and stopping
+		// with stopFunc; if stop found it is returned to stream
+	   void     readTerminator(); // a single char read looking for record
+					// terminator, end of line, or end of file
+	   // remove will remove  chars as long as tr is true.
+	   //  This function makes sure no trim values are starting the stream and removes
+	   //  them. First nonmatching character put back.
+	   istream& remove(const IO::charIn tr);
+  	   // remove_KeepLast(const IO::charIn tr) removes all but the last
+  	   // occurance of the matching character. This removes repeat
+  	   // characters but keeps the last one on the stream so that the user
+  	   // can read it and classify it.
+           istream& remove_keepLast(const IO::charIn tr);
+	   // readSimpl a type T from the stream and report on stream state. It updates
+	   // state.formatError if unexpected chars found. If the stop or term char is found but
+	   // no data that is considered missing data and the default is used, not a format
+	   // error.
+	   istream& readSimple(T& tval);
 	};
+        // specialization for strings
+	template <> class readStream<string>{
+	public:
+		readStream(istream& str, string& d, charIn termF, charIn stopF, charIn
+			TrimF, onError errType = onError::Print); // set up read
+		istream& read(string& tval);// read a type string using operator>>() 
+		streamState  reportState(); // tells whether data is good or stream is
+		                        // good
+        istream&  read(vector<string> &, int iter =
+					std::numeric_limits<int>::max());
 
+		// the actual stream
+	        istream& instr;  // the stream
+
+	private:
+	   string&    value  ;  // default when value not found
+	   TestChar Func;  // the character testing functions
+       streamState state; // state after the last read
+	   readCount   count; // count of reads and vectors
+	   onError     type;  // type of error
+           // accumulate characters in the stream
+       istream& accumulate( string& str, const charIn stopFunc);
+	   void error(const string& message);  // report the error
+		// removes characters from stream matching ignoreFunc and stopping
+		// with stopFunc; if stop found it is returned to stream
+	   void     readTerminator(); // a single char read looking for record
+					// terminator, end of line, or end of file
+	   // remove will remove  chars as long as tr is true.
+	   //  This function makes sure no trim values are starting the stream and removes
+	   //  them. First nonmatching character put back.
+	   istream& remove(const IO::charIn tr);
+  	   // remove_KeepLast(const IO::charIn tr) removes all but the last
+  	   // occurance of the matching character. This removes repeat
+  	   // characters but keeps the last one on the stream so that the user
+  	   // can read it and classify it.
+           istream& remove_keepLast(const IO::charIn tr);
+	   // readSimpl a type string from the stream and report on stream state. It updates
+	   // state.formatError if unexpected chars found. If the stop or term char is found but
+	   // no data that is considered missing data and the default is used, not a format
+	   // error.
+	   istream& readA(string& tval);
+           //Reads the string assuming trim cleared in the beginning 
+	   // removes characters at the end of the string.
+       void trimStringEnd(string& instring, const charIn
+				trimFunc);
+           // 
+	};
 
 	//fills a vector of T, where T types are separated by the required term, stopFunc char ends the filling, and Ignore chars are removed
 	// ignore character is the case when you have multiple separators in a row like many spaces and you don't want
@@ -148,6 +209,9 @@ namespace IO{
 																	
 	template<class T> istream& read(istream& ist, T& tval, bool& readsuccess, charIn stopFunc, charIn ignore);
 	template<class T> istream& read(istream& ist, T& tval, bool& readsuccess, charIn termFunc, charIn stopFunc, charIn ignore);
+        // not sure this template works yet
+	template<typename T > istream& read(istream& ist, T& tval, bool& readsuccess, charIn termfunc,
+	charIn stopFunc, charIn trim, const T& d);
 	template<> istream& read<string>(istream& ist, string& tval, bool& readsuccess, charIn stopFunc, charIn ignore);
 	template<> istream& read<string>(istream& ist, string& tval, bool& readsuccess, charIn termFunc, charIn stopFunc, charIn ignore);
 
