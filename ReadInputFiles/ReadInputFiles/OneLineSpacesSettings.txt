@@ -1,0 +1,4 @@
+## comment 0,Select Your Choices for Assembly (candidates are randomly ordered), comment 2  ,,  comment 4 , ,
+trim: isspace
+term: isComma
+stop: eol

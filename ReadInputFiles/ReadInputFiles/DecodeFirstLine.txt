@@ -1,0 +1,11 @@
+The first line holds all the set up information for how the read takes place
+
+decode the first line
+first element is the default for type T
+next three elements (int) corresponding to choice of term, stop and trim functions
+next element bool: true skipwhite space; false no skipws
+
+Next is a comment that gets printed to the terminal
+
+These records are white space separated so can be read with the normal >>
+operator in C++

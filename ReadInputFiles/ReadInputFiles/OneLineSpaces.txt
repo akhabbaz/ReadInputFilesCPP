@@ -1,0 +1,2 @@
+Empty 1 5 4 0  Spaces within data preserved, outside removed; default replace missing data, even after final comma
+ comment 0     ,Select Your Choices for Assembly (candidates are randomly ordered), comment 2  ,,  comment 4 , ,

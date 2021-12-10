@@ -4,53 +4,80 @@
 #include <sstream>
 #include <cassert>
 #include <algorithm>
+#include <iterator>
 // #define NDEBUG
 
-bool IO::isPeriod(char ch) {
+
+IO::charIn IO::isPeriod = [](char ch) {
 	return ch == '.';
-}
-bool IO::isspace(char ch) {
-	return ::isspace(ch) != 0;
-}
-bool IO::isComma(char ch) {
+};
+IO::charIn IO::eol = [](char ch) {
+	return ch == '\n';
+};
+IO::charIn IO::isspace = [](char ch) {
+	return ::isspace(ch);
+};
+IO::charIn IO::isComma = [](char ch) {
 	return ch == ',';
-}
-bool IO::isSemiColon(char ch){
+};
+IO::charIn IO::isSemiColon=[](char ch){
 	return ch == ';';
+};
+IO::charIn IO::isTab = [](char ch) {
+	return ch == '\t';  
+};
+
+IO::TestChar IO::TestChar::defaultTestChar{ IO::isComma, IO::eol, IO::isspace };
+//Constructor  Initialize variables
+void IO::TestChar::updateDefault(const TestChar& test)
+{
+	defaultTestChar = test;
 }
-//Constructor  Initialize variables 
+IO::TestChar::TestChar():term{defaultTestChar.term}, stop{defaultTestChar.stop},
+		trim{ defaultTestChar.trim }{}
 template<typename T> IO::readStream<T>::readStream(istream& str, T& d, IO::charIn termF, IO::charIn stopF, IO::charIn
-	TrimF, onError errorType) :instr{ str }, value{ d },
+	TrimF,bool skipwsS, onError errorType) :instr{ str }, value{ d },
 	Func{ termF, stopF, TrimF }, state{ false, false },
-	count{ 0, 0 }, type{ errorType }
+	count{ 0, 0 }, skipwsState{ skipwsS }, type{ errorType }
 {
 	instr.exceptions(instr.exceptions() | std::ios_base::badbit);
 	// This throws exception if instr is bad 
 	// If that fails the program can't recover so we might as well throw  an
 	// exception. Best explained p 763 Jossutis. Stream State Exceptions
 	// 15.4.4
+	(skipwsState) ? skipws():noskipws();
+	 // default behavior is to keep all whitespaces so that they can be
+			// terminators, and so more than one word can enter a string
 }
 IO::readStream<string>::readStream(istream& str, string& d, IO::charIn termF, IO::charIn stopF, IO::charIn
-	TrimF, onError errorType) :instr{ str }, value{ d },
+	TrimF, bool skipwsS, onError errorType) :instr{ str }, value{ d },
 	Func{ termF, stopF, TrimF }, state{ false, false },
-	count{ 0, 0 }, type{ errorType }
+	count{ 0, 0 }, skipwsState{ skipwsS }, type{ errorType }
 {
 	instr.exceptions(instr.exceptions() | std::ios_base::badbit);
 	// This throws exception if instr is bad 
 	// If that fails the program can't recover so we might as well throw  an
 	// exception. Best explained p 763 Jossutis. Stream State Exceptions
 	// 15.4.4
+
+	noskipws(); // default behavior is to keep all whitespaces so that they can be
+			// terminators, and so more than one word can enter a string
+	(skipwsState) ? skipws() : noskipws();
 }
-// Report an error along with line and read number
-template<typename T> void IO::readStream<T>::error(const string& msg)
+IO::streamState::streamState() :lineEnd{}, formatError{}{}
+IO::streamState::streamState(bool le, bool fe):lineEnd{le}, formatError{fe}{}
+IO::readCount::readCount():reads{},lines{}{}
+IO::readCount::readCount(int r, int l) : reads{r}, lines{l}{}
+//Report an error along with line and read number
+void IO::error(const string& msg, const IO::onError type, const IO::readCount count)
 {
    std::ostringstream oss{msg, std::ios_base::ate}; // position to end of stream
    oss << "; Line " << count.lines <<"; readCount " <<count.reads;
    switch(type){
-   case  onError::Throw:
-         std::runtime_error(oss.str());
+   case  IO::onError::Throw:
+         throw std::runtime_error(oss.str());
 	 break;
-   case  onError::Print:
+   case  IO::onError::Print:
    	 std::cerr << oss.str()<< std::endl;
 	 break;
    default:
@@ -58,50 +85,162 @@ template<typename T> void IO::readStream<T>::error(const string& msg)
    }
    return;
 }
-
-template<typename T> IO::streamState  IO::readStream<T>::reportState()
+void IO::readStream<string>::updateDefault(const string& str)
+{
+	value = str;
+}
+template <typename T> void IO::readStream<T>::updateDefault(const T& v)
+{
+	value = v;
+}
+// very simple read for vectors.  
+template<typename T> istream&  IO::readStream<T>::read(vector<T> & vec, unsigned iter)
+{
+	T val{};
+	for (unsigned i = 0; i < iter; ++i)
+	{
+		read(val);
+		vec.push_back(val);
+		if  (state.lineEnd or instr.eof())
+		{ 	
+			break;
+		}
+	}
+	++count.lines;
+	count.reads = 0;
+	return instr;
+}
+istream&  IO::readStream<string>::read(vector<string> & vec, unsigned iter)
+{
+	string val{};
+	
+	for (unsigned i = 0; i < iter; ++i)
+	{
+		read(val);
+		vec.push_back(val);
+		if  (state.lineEnd or instr.eof())
+		{ 	
+			break;
+		}
+	}
+	++count.lines;
+	return instr;
+}
+template<typename T>  IO::streamState  IO::readStream<T>::reportState()
 {
 	return state;
 } // tells whether data is good or stream is
-// remove will remove  chars as long as trim is true.
-//  This function makes sure no trim values are starting the stream and removes
-//  them. First nonmatching character put back.
-template<typename T> istream& IO::readStream<T>::remove(const IO::charIn trim)
+IO::streamState  IO::readStream<string>::reportState()
 {
-	char ch;
-	while (instr.get(ch) && trim(ch)){}
-	//either stream failed or nonspace found
-	if (instr) //stopFunction must be true or trim false
+	return state;
+} // tells whether data is good or stream is
+// remove will remove  chars as long as stopFunc is false, and stores the re
+// remove will store characters in a string as long as stopFunction not triggered.
+//  The stop function puts the character back into the stream.
+ istream& IO::remove(istream& instr, const IO::charIn stopFunc, string& str)
+{
+	std::ostringstream oss;
+	using str_it = std::istream_iterator<char>;
+	str_it readchar{instr};
+	str_it  eos{};
+	IO::charIn transferChars = [&oss, stopFunc](char i)
+	{
+		bool stopFound = stopFunc(i);
+		if (!stopFound) {
+			oss << i;
+		}
+		return stopFound;
+	};
+	str_it foundloc = std::find_if( readchar, eos, transferChars);
+	if (foundloc !=eos)
 	{
 		instr.unget();
-		
 	}
-	return instr;
+	str = oss.str();
+  	return instr;
 }
+// removes characters at the end of the string.
+//  This function makes sure no trim values are starting the stream and removes
+//  them. First nonmatching character put back.
+
+istream& IO::remove(istream& instr, const IO::charIn stopFunc)
+{
+	//this iterator works as follows. When constructed the stream is read as with >> and a 
+	// copy is held ready to dereference. Essentially that is removed. The increment ++ operator
+	// will do the next read and store result in *
+	using str_it = std::istream_iterator<char>;
+	str_it readchar{instr};
+	str_it eos{};
+	str_it foundloc = std::find_if( readchar, eos, stopFunc);
+	if (foundloc !=eos)// need unget here because when found it has been read.
+	{
+		instr.unget();
+	}	return instr;
+}
+// removes until stopFunc true, returns currVal and piorVal in strChar Uses peek. 
+// does not unget any characters
+istream& IO::remove(istream& istr, const IO::charIn stopFunc , IO::StreamChars& strChar)
+{
+
+   strChar.current = istr.peek();
+   strChar.priorValid = false;
+   while( !(strChar.current == std::char_traits<char>::eof() ))
+   {
+      char ch{static_cast<char>(strChar.current)};
+      if ( stopFunc(ch)) {
+      		break;
+      }
+      //ch is not the stop update;
+      char chCopy;
+      istr >> chCopy;
+      assert( chCopy == ch);
+      strChar.prior = strChar.current;
+      strChar.priorValid = true;
+      strChar.current = istr.peek();
+  }
+  return istr;
+}
+// decides to put terminator back into stream or not based on current and prior chars
+istream& IO::putTermBack(istream& istr, const IO::TestChar& func, const IO::StreamChars strChar)
+{
+    char curr = static_cast<char>(strChar.current);
+    char prior = static_cast<char>(strChar.prior);// prior won't ever be eol 
+    if (strChar.priorValid && func.term(prior))
+    {// current not trim nor term nor stop.  current won't ever be trim I think
+        bool currentData{ ! (func.trim(curr) || func.term(curr)  || func.stop(curr))};
+	if (currentData)
+	{
+		istr.putback(prior);
+	}
+    }
+    return istr;
+}
+
+
 // remove all but the last occurance of a matching character. The character on
 // the stream will be  the match if found, but if not found,  the stream remains
-// as it was.
-template<typename T> istream& IO::readStream<T>::remove_keepLast(const
-IO::charIn tr)
+// as it was. This removes all chars while tr is false except the last occurance
+
+istream& remove_keepLast(istream& instr, const IO::charIn tr)
 {
 	int peekVal;
         bool match=false;
         // enter if not eof
-		while ((peekVal = instr.peek()) != std::char_traits<char>::eof())
-		{
-			char ch{ static_cast<char>(peekVal) };
-			char  test;
-			// match found
-			if (tr(ch)) {
-				match = true;
-				instr >> test; // read char
-				assert(test == ch); // should be the same
-			}
-			else {
-				if (match) { instr.unget(); }
-				break;
-			}
+	while ((peekVal = instr.peek()) != std::char_traits<char>::eof())
+	{
+		char ch{ static_cast<char>(peekVal) };
+		char  test;
+		// match found
+		if (!tr(ch)) {
+			match = true;
+			instr >> test; // read char
+			assert(test == ch); // should be the same
 		}
+		else {
+			if (match) { instr.unget(); }
+			break;
+		}
+	}
         return instr;
 }
 
@@ -114,93 +253,120 @@ template<typename T> istream& IO::readStream<T>::readSimple(T& tval)
    // if at End of File stream will be failed so read won't work.
    // Hear EOF is treated as a term character as it should be at the end of reading a
    // line of code
-   instr >> T;
+   instr >> tval;
+   (skipwsState) ? skipws() : noskipws(); // in case read changes stream state
    // value is bad but is this a format error or a missing data element?
-   ++state.reads;
    if (instr.fail())
    {
-      T = value; 
+      tval= value; 
       if (!instr.eof()) // characters left
       {
            instr.clear();
-	       charIn stopread = [Func](char i) -> bool {return  Func.stop(i) ||
+	       charIn stopread = [this](char i) -> bool {return  Func.stop(i) ||
 				   Func.trim(i) || Func.term(i); };
 	   // there was a format error on read
            char ch{ static_cast<char>(instr.peek())};
 	       assert(instr);// should be able to get chars
 	       if ( state.formatError =!stopread(ch)){
-           	error("Format Error on read"); //data entry missing;  char is 
+           	IO::error("Format Error on read", type, count); //data entry missing;  char is 
 	       }
       }
     }
+   else {
+	   ++count.reads;
+   }
     return instr;
 }
 
+
 //Reads the string assuming trim cleared in the beginning 
-istream& IO::readStream<string>::readA(string& str) //read a string value one character at a time
+istream& IO::readStream<string>::readSimple(string& str) //read a string value one character at a time
 {
 
-	charIn stopread = [this](char i) -> bool{return  Func.stop(i) ||
+	charIn stopread = [this](char i){return  Func.stop(i) ||
 		Func.term(i); };
-	accumulate(str, stopread);
-	trimStringEnd(str, Func.trim);
+	IO::remove(instr, stopread, str);
+	++count.reads;
+	if (str.size()== 0){
+		str = value;
+	}
+	IO::trimStringEnd(str, Func.trim);
 	return instr;
 }
 
+void IO::readStream<string>::skipws(void)
+{
+	instr.setf(std::ios_base::skipws);
+}
+template <typename T> void IO::readStream<T>::skipws(void)
+{
+	instr.setf(std::ios_base::skipws);
+}
+void IO::readStream<string>::noskipws(void)
+{
+	instr.unsetf(std::ios_base::skipws);
+}
+template <typename T> void IO::readStream<T>::noskipws(void)
+{
+	instr.unsetf(std::ios_base::skipws);
+}
 void IO::streamState::reset() {
 	lineEnd = false;
 	formatError = false;
-}  // sets stream to false.
+} //default state
+//IO::removes chars befor
+istream& IO::removeTrimBefore(istream& instr, const IO::TestChar& func)
+{
+	//!Trim true means stop removing; eol means stop removing; others get IO::removed
+	IO::charIn notTrimOrStop = [func](char i) { return !func.trim(i) || func.stop(i); };
+	IO::remove(instr, notTrimOrStop); // non trim char left on stream  should be T if eof fail.
+	return instr;
+}
+// removes the characters after the read
+istream& IO::removeCharsAfter(istream& instr, const IO::TestChar& Func, const bool formatError)
+{
+	// if formatError remove till term
+	IO::charIn stopread = [Func](char i) -> bool {return  Func.stop(i) ||
+		Func.term(i); };
+	if (formatError) { // there is a non term on stream.
+		IO::remove(instr, stopread); // clear stream till term found
+	}
+	
+	//as in removeChars before 
+	IO::charIn  notTrimOrEOL = [Func](char i) -> bool {return
+		!Func.trim(i) || Func.stop(i); };
+	// if trim overlaps with term all but the last is removed.
+	IO::StreamChars streamchars{ 0, 0, false };
+	IO::remove(instr, notTrimOrEOL, streamchars);
+	IO::putTermBack(instr, Func, streamchars);
+	return instr;
+}
 template<typename T> istream& IO::readStream<T>::read(T& tval)// read a type T using operator>>()
 {
         //clear past read state:
-        state.reset(); 	
-	// if trim is different from the terminator or eol, then this removes
-        // trim characters. If there are characters both trim and terminator,
-        // then those repeats get removed.  
-	remove( Func.trim); // non trim char left on stream  should be T if eof fail.
-	readSimple(tval);  // 
-	charIn stopread = [Func](char i) -> bool {return  Func.stop(i) ||
-	   		Func.term(i); };
-	if (state.formatError) { // there is a non term on stream.
-	   remove( stopread); // clear stream till term found
-        }
-	//remove trim chars before terminator.  If trim does not includ
-        charIn trimNotTerm = [Func](char ch) -> bool {return
-		Func.trim(ch) && !(Func.stop(ch) || Func.term(ch)); };
-        // all trim chars removed as long as they are not terminators
-        remove(trimNotTerm);
-        charIn trimAndTerm =[Func](char i) -> bool {return
-		Func.trim(i) && (Func.stop(i) || Func.term(i)); };
-  	// if trim overlaps with term all but the last is removed.
-        remove_keepLast(trimAndTerm);
-        // all trims have been removed char on stream should be terminator.
-        readTerminator();
-	return instr;
+        state.reset(); 
+		(skipwsState) ? skipws() : noskipws();
+		IO::removeTrimBefore(instr, Func);
+		readSimple(tval);  // 
+		IO::removeCharsAfter(instr, Func, state.formatError);
+		IO::readTerminator(instr, Func.term, Func.stop, state, count, type);
+		return instr;
 }
-       
-   
-// accumulate will store characters in a string as long as stopFunction not triggered.
-//  The stop function puts the character back into the stream.
- istream& IO::readStream<string>::accumulate( string& str, const IO::charIn stopFunc)
+istream& IO::readStream<string>::read(string& tval)// read a type T using operator>>()
 {
-	char ch;
-	std::ostringstream oss;
-	while (instr.get(ch) &&  !stopFunc(ch))
-	{
-		oss << ch;
-	}
-	//stream is good so stopFunc  must be true
-	if (instr) 
-	{
-		instr.unget();
-
-	}
-	str = oss.str();
+	//clear past read state:
+	state.reset();
+	(skipwsState) ? skipws() : noskipws(); //incase first call after wsSkip was reset by user
+	// stop when not trim or when the stop isfound 
+	IO::removeTrimBefore(instr, Func);
+	readSimple(tval);  // 
+	IO::removeCharsAfter(instr, Func, state.formatError);
+	// all trims have been removed char on stream should be terminator.
+	IO::readTerminator(instr, Func.term, Func.stop, state, count, type);
 	return instr;
 }
-// removes characters at the end of the string.
- void IO::readStream<string>::trimStringEnd(string& instring, const IO::charIn
+   
+ void IO::trimStringEnd(string& instring, const IO::charIn
 		trimFunc)
 {
 	// reverse iterator to find the last charactermatching
@@ -214,27 +380,31 @@ template<typename T> istream& IO::readStream<T>::read(T& tval)// read a type T u
 	// points to the first trimcharacter that is consecutive from the end.
 	string::const_iterator forwardit {lastGood.base()};
 	// do the erasing.
-	instring.erase(forwardit);
+	instring.erase(forwardit, instring.end());
 }
 // a single char read looking for a record terminator, end of line or end of
 // file
-template<typename T> void     IO::readStream<T>::readTerminator()
+istream& IO::readTerminator(istream& instr, const IO::charIn sep,
+	 const IO::charIn stop, IO::streamState& state, const IO::readCount count, const IO::onError type)
 {
-      auto stopread = [Func](char i) -> bool {return  Func.stop(i) ||
-	   Func.term(i); };
+      IO::charIn stopread = [stop, sep](char i) -> bool {return  stop(i) ||
+	   sep(i); };
       char ch;
-      if ( instr >> ch && state.formatError =!stopread(ch))
+      if ( instr >> ch)
       {
-           	error("Terminator not found"); //data entry missing;  char is
-                remove(stopread); // remove characters from the stream. 
+      		state.formatError = !stopread(ch);
+		if (state.formatError){
+		    IO::error("Terminator not found", type, count); //data entry missing;  char is
+                    IO::remove(instr, stopread); // remove characters from the stream. 
+		}
+		else if (stop(ch)){
+			state.lineEnd = true;
+		}
       }
-      if (Func.stop(ch)) {
-	   state.lineEnd = true;
-      }
-      return;
+	  return instr;
 }
-	  	
- 	
+
+
 /*    istream& IO::check_failed_stream(istream& ist, Op termfunc, const string& message)
 is meant to test a stream after it has failed.  It isn't meant for good streams!. For example
 if the read succeeded even if stream is now EOF or bad, the stream will say success.  It throws an exception
@@ -265,14 +435,14 @@ istream& IO::check_good_stream(istream& ist, charIn termfunc, const string& mess
 		ist.clear(std::ios_base::failbit);
 	}
 	if (ist.bad()) 
-		std::runtime_error{ message };
+		throw std::runtime_error{ message };
 	return ist;
 }
 
 template< class T> ostream&  IO :: print_vector(ostream& ostr, const  T& invec, const int modulo)
 {
 	if (modulo < 1) 
-		std::runtime_error("Modulo too small");
+		throw std::runtime_error("Modulo too small");
 	for (vector<int>::size_type i = 0; i < unsigned(invec.size()); i++)
 	{
 		ostr << invec[i];
@@ -302,7 +472,7 @@ void IO::read_past_token(istream& instr, charIn termfunc, bool eatToken) // if w
 	 //if fail to read ) then we have to be eof; otherwise 
 	// exception
 	if (instr.bad()) 
-		std::runtime_error("bad stream...");
+		throw std::runtime_error("bad stream...");
 	     // bad
 }
 
@@ -312,11 +482,81 @@ bool readOver(std::istream& ist, IO::charIn termFunc, IO::charIn stopFunc, IO::c
 //bool trimStream(std::istream& ist, IO::charIn trim);
 
 
-bool IO::falseFunction(char ch) {
+IO::charIn IO::falseFunction = [](char ch) {
 	return false;
+};
+template <typename T> istream& IO::getValue(istream& instr, T& val)
+{
+	instr >> val;
+	return instr;
+}
+IO::charIn  IO::findFunction(int i)
+{
+	IO::charIn func;
+	switch (i) {
+	case 0:
+		func = IO::falseFunction;
+		break;
+	case 1:
+		func = IO::isComma;
+		break;
+	case 2:
+		func = IO::isSemiColon;
+		break;
+	case 3:
+		func = IO::isPeriod;
+		break;
+	case 4:
+		func = IO::isspace;
+		break;
+	case 5:
+		func = IO::eol;
+		break;
+	default:
+		func = IO::isComma;
+		break;
+	}
+	return func;
 }
 
+IO::TestChar  IO::getFunctions(istream& instr)
+{
+	int i, j, k;
+	instr >> i >> j >> k;
+	IO::charIn term{ findFunction(i) };
+	IO::charIn stop{ findFunction(j) };
+	IO::charIn trim{ findFunction(k) };
+	return IO::TestChar{ term, stop, trim };
+}
+bool          IO::getskipwsState(istream& istr)
+{
+	bool skipState;
+	istr >> skipState;
+	return skipState;
+}
+template <typename T> istream& IO::readCommandLine(istream& instr, 
+			T& val, IO::TestChar& sep, bool& skipws, string& descrip)
+{
+	instr.setf(std::ios_base::skipws);
+	IO::getValue<T>(instr, val);
+	sep = IO::getFunctions(instr);// separators
+	skipws = IO::getskipwsState(instr);
+	instr.unsetf(std::ios_base::skipws);
+	charIn NotIsSpace = [=](char i)
+	{return !IO::isspace(i) || IO::eol(i);  };
+	IO::remove(instr, NotIsSpace);
+	IO::remove(instr, IO::eol, descrip);
 
+	IO::streamState state{};
+	IO::readCount count{};
+	IO::onError  type{ IO::onError::Throw };
+	if (!instr) {
+		IO::error("read of input parameters failed", type, count);
+	}
+	IO::readTerminator(instr, IO::eol, IO::eol, state, count, type);
+	instr.setf(std::ios_base::skipws);
+	return instr;
+}
 //reads T types separated by characters given by ignore(ch) == true, which can be many in a row; filling of vector
 // continues until termfunc is found and fails if not found. vector<T> grows for each successful read;
 // str good:   stop term found
@@ -349,7 +589,7 @@ template<class T> istream& IO::fill_vector(istream& ist, vector<T>& v, int& coun
 	bool readsuccess;
 	int max = count;
 	if (max < 0){
-		std::runtime_error("max out of bounds");
+		 throw std::runtime_error("max out of bounds");
 	}
 	count = 0;
 	while ((count < max) && read(ist, tval, readsuccess, termfunc, ignore) && readsuccess)
@@ -455,7 +695,7 @@ template<> istream& IO::fill_vector<string>(istream& ist, vector<string>& v,
 	bool readsuccess = false;
 	int max = count;
 	if (max < 0){
-		std::runtime_error("max out of bounds");
+		throw std::runtime_error("max out of bounds");
 	}
 	count = 0;
 	while ((count < max) && read(ist, test, readsuccess, stopFunc, ignore) && readsuccess)
@@ -509,7 +749,7 @@ template<> istream& IO::fill_vector<string>(istream& ist, vector<string>& v, int
 	bool readsuccess = false;
 	int max = count;
 	if (max < 0){
-		std::runtime_error("max out of bounds");
+		throw std::runtime_error("max out of bounds");
 	}
 	count = 0;
 	while ((count < max) && read(ist, test, readsuccess, termFunc, stopFunc, ignore) && readsuccess)

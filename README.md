@@ -1,59 +1,142 @@
 # ReadInputFilesCPP
-
  
 Reading text data files is general, but there is an immense variety of text based data files. 
-This program is meant to read a large subset of them, including CSV files.
+This program is meant to read a large subset of them, including CSV files.  It
+consiss of a header file IO.h, a definitions file, IO.cpp, that should be in the same
+translation unit, a main test file that demonstrates its abilities,
+ReadInputFiles.cpp, and several example files that can be read that set up the read
+and then read.  These are all read in ReadInput.cpp, and are in the visual studios
+set up.
 
 The purpose of this file is to read data text files of various forms that consist of
-a columnar arrangement of data. One line has data fields that may be empty separated by a 
-terminator function term. The data can be strings or numeric types, but all the same type.
-The program has a read function which reads one field and a vector function which reads a series
-fields.
+a columnar arrangement of data, or a series of record.  The data can be strings or
+numeric types or any records.  Essentially this is a class that has two member
+function; read(), to read individual elements, and read() to read a vector of
+elements, separated by a terminator.  This is accomplished by having a terminator
+between records and a different one to signal end of line or end of vector.  In
+addition there is a trim function that removes extra characters in the beginning and
+end of the record. These may be extra spaces or other white characters. This makes it
+possible to get records purged of extra characters, even when the file hase them. 
+There are also helper function to remove characters from a stream or trim a string
+that work a character at a time that can be used outside of these classes. 
 
-Some features that make this general: Matching is done with functions not characters so logic 
-or several different characters can make a match. Standard functions like isspace can be used. Next,
-the type of read is a template, so anything can be read, any type of variable. The read will be defined
-by the >> operator. Lastly care is taken to read single characters at a time so that if the read fails
-or the stream gets bad the read terminates.
+
+
+The main
+class is templated so that any type for which the >> operator is defined can be read,
+again making this general.  One line is read at a time so one can define different
+reads with different types and separators for different lines.  In general for any
+class T the read will look for terminators, end of lines, and trim characters, but
+leave the read of the record to  operator>>() or >> so to standard or a user supplied
+overload code.  There is an example of how to write this function in
+ReadInputFiles.cpp.  The template is specialized to read strings and those are read a
+character at a time, essentially not skipping white space. This allows a record to
+consist of a line of text or a phrase;  internal white spaces won't be trimmed, but
+leading and trailing ones will be (if the trim function is white space).
+
+
+Errors are handled as follows.  On set-up a default value for the read is inputted.
+If there is a format error, that value it put in the data field. Errors occur when
+the structure read fails, data is missing, or when the terminator is not found.  One can report
+errors by either printing them to cerr, throwing a runtime error, or not reporting and
+letting the default value speak for the error.  If an error occurs during the read
+the report identifies the record number (starting with 0), and line number (of
+successive reads with that structure, and reports that, either by throwing an
+exception, printing out a message or letting the default record replacement indicate
+the error.  The stream is then cleared of characters until the next terminator and
+the read continues.
+
+Critical characters are identified with a function object defined below, charIn type,
+not by single characters.  This is much more expressive and allows for more elaborate
+matching. For example the isspace function will use C++'s isspace to report true if a
+character matches.  These functions can be lambdas and can implement logic like
+!isspace || eol.  This simplifies the logic and makes the program much more flexible.
+Care was taken by including this logic, so that the resulting vector reads are
+exactly the correct length, not bigger or smaller.
+
+
+Three charIn functions define how the read takes place.
+
+term      the record ends with a term character match or true
+stop      the record read stops with a stopFunc match
+trim      trims the beginning and end of a field removing repeated characters 
 
 There are three functions of type charIn defined below  that takes a character input and returns a
 boolean function.  This is more general than a C++ style char test because you can have multiple 
 characters match that you define.  
 
 
-Three charIn functions define how the read takes place.
+term are characters used to separate
+records, stop are characters that stop a vector read that terminate a series of
+records, and trim are characters that should be ignored.  This program handles all
+three. This allows many characters to be trim, term or stop and
+gives alot of flexibility.  For example whitespace could be both a trim and a
+separator and that consists of several characters.  It will trim extra white spaces
+between records but keep the last determine the terminator. The end of line may also
+be a '\n' which would be a white space, and this will still not trim the white space.
 
-term      the field ends with a term match or true
-stopFunc  the vector read stops with a stopFunc match
-trim      trims the beginning and end of a field.
 
+When the separators are all disjoint, the program handles all cases well. In addition
+when there is overlap the program handles that and has certain rules that make
+defining functions simple to get the desired outcome.  This is a common case.  For
+example the terminator and trim could be both isspace and the program then will still
+trim repeats and still find the terminator.  The eol character may be '\n' and the trim may
+be isspace and the program will not trim away the eol.
 
-The stopFunc will terminate the vector read.  It also terminates a field read  like in the end of 
-a line.
+Here are the simple rules that are used in order of priority.
+
+1. eol or the stop function always stops the read and stops trimming characters.
+Repeated eols will not be trimmed away.
+2. trim removed repeats that are not eol.
+3  if the last trim removed the terminator (such as a space), it is put back so that
+    the terminator is still found with no error.
 
 term can be a simple isComma function that matches ',' or it could be more complex like 
 ',' || ' '|| '\t'.  This is useful for example if the data has integers separated by many spaces 
-commas.
+commas.  Records end with either a terminator or eol.
 
-Trim is the most complex.  Characters in the beginning and end of the field that match trim get removed.
-If the data file has extra spaces between fields trim can remove the extra spaces. It is used to 
+Trim is the most complex.  Characters in the beginning and end of the field that
+match trim get removed but not trims in the middle of a field.  It is used to 
 clean up the strings.  It also is there to define how repeat terminators are dealt with. 
 For example if there are characters and several spaces between them or tabs trim can remove the repeats
-so that multiple matches in a row get removed and logically turn into one match. This keeps the 
-vectors to be of the correct size.
+so that multiple matches in a row get removed and logically turn into one match.
+Without a trim function repeated spaces could end up creating lots of spurious
+records in vectors.  
 
 Each field is parsed as follows:
 
-1. trim removes matching characters in the beginning as long as no stopFunc
-   match.
-2. the read is done and the read terminates with a stopFunc or term match.
-3. trim removes characters in the end.
+1. trim removes matching characters in the beginning trim but not eol.
+2. the read is done
+3. trim removes chars at the end but not last terminator.
+4. terminator read.
 
 A default is passed.
 Some use case this was designed for:
-							  termFunc stopFunc trim       output
- 123 ' ' ' ',' '132 ' ''\n'   ' '||,    \n      ' '||,     123, 132;  term is comma or space
- 123,123, \n                    ,       \n      ' '        123, 123,def; no data in last field
-  h' 'a' '' 'b\n               ' '      \n      ' '        h, a, b ;    repeated terms ignored 
-tst 1, tst t' ',tst three' '\n   ,      \n      ' '        tst 1,tst t, tst three; inter word trims
-																					dont match
+
+  123   ,  132  \n   
+     ;where eol is term, isspace is trim and isComma is separator
+  This is a test,   ,  Another string \n  
+     where phrases end up in one record
+     0x23  , 0xAF \n  
+        special numerics can be read
+
+The reads keep track of all characters so it is critical to know whether skipws is
+set or not. In most cases noskipws is set so eol is not simply removed. Changing this
+setting dramatically changes the read, so it must be set correctly.
+
+The example files show how to read strings, integers, long integers, and records such
+as a Name, or a Life (a two integer record) defined in the examples.   
+
+
+To read records correctly care needs to be taken to  read the record but not to read
+extra characters, even in cases of failure, so that separators, and terminators are
+not removed from the stream. One way to do this, perhaps the easiest way, is to first
+read the record using the readStream<string>:  This will get the records as a string
+and do the trimming and identify all the separators. Next use a special function to
+parse the string into a record.  This function is now easier to write because you can
+skip white spaces without needing to worry about removing stream terminators.  The
+other way is by reading a record with defined terminators and not skipping white
+spaces. Remove helper functions can be used. The record should not have the
+terminator characters or eol characters.  This is done in Life record in the example
+file.  See comments near the Life declaration.
+
