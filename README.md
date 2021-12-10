@@ -144,45 +144,46 @@ file.  See comments near the Life declaration.
 
 Here is the output of the unit test file that loads in all the example files:
 
-paces within data preserved, outside removed; default replace missing data, even after final comma
+paces within data preserved, outside removed; default replace missing data, even after final comma<br>
 comment 0 ; Select Your Choices for Assembly (candidates are randomly ordered) ; comment 2 ; Empty ; comment 4 ; Empty ; Empty ;
 
 **** End of File 1
 
 This demonstrates stream iterators actually use the same operator as >>
-001122334455
+001122334455<br>
 **** End of File 2
 
-template constructor used; default used during error; Sep and term disjoint; no third line
-0 ;* 1 ;* 2 ;* 3 ;* 4 ;* 5 ;*
-Format Error on read; Line 1; readCount 0
--1 ;* 2 ;* 3 ;* 4 ;* 5 ;* 6 ;*
-EOf reached
-**** End of File 3
+template constructor used; default used during error; Sep and term disjoint; no third line <br>
+0 ;* 1 ;* 2 ;* 3 ;* 4 ;* 5 ;*<br>
+Format Error on read; Line 1; readCount 0<br>
+-1 ;* 2 ;* 3 ;* 4 ;* 5 ;* 6 ;*<br>
+EOf reached<br>
+**** End of File 3<br>
 
-Trim and term overlap; both isspace, eol is '\n'; empty third line--default used
-0 ;* 1 ;* 2 ;* 3 ;* 4 ;* 5 ;*
--7 ;* 2 ;* 3 ;* 4 ;* 5 ;* 6 ;*
--1 ;*
-Eof reached
-**** End of File 4
+Trim and term overlap; both isspace, eol is '\n'; empty third line--default
+used<br>
+0 ;* 1 ;* 2 ;* 3 ;* 4 ;* 5 ;*<br>
+-7 ;* 2 ;* 3 ;* 4 ;* 5 ;* 6 ;*<br>
+-1 ;*<br>
+Eof reached<br>
+**** End of File 4<br>
 
-CSV file; Read/Write Records, strings, errors
-Passport ; Great Artists ; Passport ; Passport ; Passport ; Passport ; Passport ;
-Chopin, Frederick ; Bach, JS ; Lennon, John ; Metallica, Band ; Darwish, Mahmoud ; Swift, Taylor ; Darwish, Mahmoud ;
-Nocturne Op. 9 in E-flat Major ; Siciliano ; Imagine ; Unforgiven ; Passport ; Shake it off ; Passport ;
-Format Error on read; Line 0; readCount 3
-[1810 - 1849] ; [1685 - 1750] ; [1940 - 1980] ; [0 - 0] ; [0 - 0] ; [1989 - 0] ; [0 - 0] ;
-12490596065 ;** -1 ;** 1 ;** -1 ;** -1 ;** -1 ;** 2 ;**
-12490612221 ;** 2 ;** -1 ;** -1 ;** 1 ;** -1 ;** -1 ;**
-12490613670 ;** 4 ;** 2 ;** 1 ;** -1 ;** 3 ;** -1 ;**
-12490613762 ;** -1 ;** -1 ;** 1 ;** -1 ;** -1 ;** -1 ;**
-12490613889 ;** -1 ;** 2 ;** -1 ;** 1 ;** -1 ;** -1 ;**
-12490613940 ;** 1 ;** 4 ;** 2 ;** 3 ;** 5 ;** -1 ;**
-12490614046 ;** 4 ;** 2 ;** 5 ;** 1 ;** 3 ;** -1 ;**
-12490614062 ;** 1 ;** 2 ;** 4 ;** 3 ;** 5 ;** -1 ;**
--1 ;**
-Eof Found
-**** End of File 5
+CSV file; Read/Write Records, strings, errors<br>
+Passport ; Great Artists ; Passport ; Passport ; Passport ; Passport ; Passport ;<br>
+Chopin, Frederick ; Bach, JS ; Lennon, John ; Metallica, Band ; Darwish, Mahmoud ; Swift, Taylor ; Darwish, Mahmoud ;<br>
+Nocturne Op. 9 in E-flat Major ; Siciliano ; Imagine ; Unforgiven ; Passport ; Shake it off ; Passport ;<br>
+Format Error on read; Line 0; readCount 3<br>
+[1810 - 1849] ; [1685 - 1750] ; [1940 - 1980] ; [0 - 0] ; [0 - 0] ; [1989 - 0] ; [0 - 0] ;<br>
+12490596065 ;** -1 ;** 1 ;** -1 ;** -1 ;** -1 ;** 2 ;**<br>
+12490612221 ;** 2 ;** -1 ;** -1 ;** 1 ;** -1 ;** -1 ;**<br>
+12490613670 ;** 4 ;** 2 ;** 1 ;** -1 ;** 3 ;** -1 ;**<br>
+12490613762 ;** -1 ;** -1 ;** 1 ;** -1 ;** -1 ;** -1 ;**<br>
+12490613889 ;** -1 ;** 2 ;** -1 ;** 1 ;** -1 ;** -1 ;**<br>
+12490613940 ;** 1 ;** 4 ;** 2 ;** 3 ;** 5 ;** -1 ;**<br>
+12490614046 ;** 4 ;** 2 ;** 5 ;** 1 ;** 3 ;** -1 ;**<br>
+12490614062 ;** 1 ;** 2 ;** 4 ;** 3 ;** 5 ;** -1 ;**<br>
+-1 ;**<br>
+Eof Found<br>
+**** End of File 5<br>
 
 
