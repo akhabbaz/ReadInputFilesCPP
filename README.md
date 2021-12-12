@@ -1,25 +1,6 @@
 # ReadInputFilesCPP
-Original code by Anton Khabbaz (anton.khabbaz@gmail.com)
-  
- This software is provided 'as-is', without any express or implied
- warranty. In no event will the authors be held liable for any
- damages arising from the use of this software.
-  
- Permission is granted to anyone to use this software for any
- purpose, including commercial applications, and to alter it and
- redistribute it freely, subject to the following restrictions:
-  
- 1. The origin of this software must not be misrepresented; you must
- not claim that you wrote the original software. If you use this
- software in a product, an acknowledgment in the product documentation
- would be appreciated but is not required.
-  
- 2. Altered source versions must be plainly marked as such, and
- must not be misrepresented as being the original software.
-  
- 3. This notice may not be removed or altered from any source
- distribution.
- */
+
+ 
 Reading text data files is general, but there is an immense variety of text based data files. 
 This program is meant to read a large subset of them, including CSV files.  It
 consiss of a header file IO.h, a definitions file, IO.cpp, that should be in the same
@@ -167,18 +148,18 @@ Here is the output of the unit test file that loads in all the example files:
 paces within data preserved, outside removed; default replace missing data, even after final comma<br>
 comment 0 ; Select Your Choices for Assembly (candidates are randomly ordered) ; comment 2 ; Empty ; comment 4 ; Empty ; Empty ;
 
-**** End of File 1
+**** End of File 1 ***
 
 This demonstrates stream iterators actually use the same operator as >>
 001122334455<br>
-**** End of File 2
+**** End of File 2***
 
 template constructor used; default used during error; Sep and term disjoint; no third line <br>
 0 ;* 1 ;* 2 ;* 3 ;* 4 ;* 5 ;*<br>
 Format Error on read; Line 1; readCount 0<br>
 -1 ;* 2 ;* 3 ;* 4 ;* 5 ;* 6 ;*<br>
 EOf reached<br>
-**** End of File 3<br>
+**** End of File 3***<br>
 
 Trim and term overlap; both isspace, eol is '\n'; empty third line--default
 used<br>
@@ -186,7 +167,7 @@ used<br>
 -7 ;* 2 ;* 3 ;* 4 ;* 5 ;* 6 ;*<br>
 -1 ;*<br>
 Eof reached<br>
-**** End of File 4<br>
+**** End of File 4***<br>
 
 CSV file; Read/Write Records, strings, errors<br>
 Passport ; Great Artists ; Passport ; Passport ; Passport ; Passport ; Passport ;<br>
@@ -204,6 +185,27 @@ Format Error on read; Line 0; readCount 3<br>
 12490614062 ;** 1 ;** 2 ;** 4 ;** 3 ;** 5 ;** -1 ;**<br>
 -1 ;**<br>
 Eof Found<br>
-**** End of File 5<br>
+**** End of File 5**<br>
 
+
+Original code by Anton Khabbaz (anton.khabbaz@gmail.com)
+  
+ This software is provided 'as-is', without any express or implied
+ warranty. In no event will the authors be held liable for any
+ damages arising from the use of this software.
+  
+ Permission is granted to anyone to use this software for any
+ purpose, including commercial applications, and to alter it and
+ redistribute it freely, subject to the following restrictions:
+  
+ 1. The origin of this software must not be misrepresented; you must
+ not claim that you wrote the original software. If you use this
+ software in a product, an acknowledgment in the product documentation
+ would be appreciated but is not required.
+  
+ 2. Altered source versions must be plainly marked as such, and
+ must not be misrepresented as being the original software.
+  
+ 3. This notice may not be removed or altered from any source
+ distribution.
 
